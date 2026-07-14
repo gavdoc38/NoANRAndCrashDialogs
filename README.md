@@ -1,14 +1,48 @@
 # NoANRAndCrashDialogs
 
-An LSPosed module to hide or auto-dismiss system ANR (App Not Responding) and crash dialogs.
+A libxposed module (compatible with **Vector 2.0**) that automatically hides or dismisses system ANR ("App Not Responding") and crash ("App has stopped") dialogs.
 
-- Tested on a Pixel 7 and Pixel 8 running Android 15.
-- Requires Root + Magisk + LSPosed.
-- I am not providing build instructions; a prebuilt APK is available in [Releases](https://github.com/diskree/NoANRAndCrashDialogs/releases).
-- I have no plans to adapt this for older Android versions or other devices.
+Forked and updated from [diskree/NoANRAndCrashDialogs](https://github.com/diskree/NoANRAndCrashDialogs).
 
-## Disclaimer
-- This project is released under the [CC0 1.0 Universal license](https://creativecommons.org/publicdomain/zero/1.0/legalcode), with an additional disclaimer of liability.
-- Use at your own risk. I do not provide support, warranties, or guarantees of any kind.
-- You are solely responsible for compliance with all laws and regulations. Any illegal or abusive usage is prohibited, and I assume no liability for any harm, damage, or legal consequences arising from use of this module.
-- If you want to modify or extend this module (e.g., for older Android versions), feel free to open a Pull Request or even create a separate project; I won’t be providing further guidance or support.
+## Changes from original
+
+- **Vector 2.0** framework support (replaces LSPosed)
+- **Android 8.1 – 16+** compatibility (API 27–36), up from Android 15 only
+- Updated to **libxposed API 101** (the original used unpublished API 100)
+- Modern AGP 8.10.0 + Kotlin 2.1.0 toolchain
+- Version‑aware hooks: `ErrorDialogController` (API 31+) and `AppErrors` fallback (API 27–30)
+
+## Requirements
+
+- **Vector 2.0** (or another libxposed‑compatible framework)
+- Rooted device (Magisk / KernelSU with Zygisk)
+
+## Build
+
+```bash
+git clone https://github.com/diskria-android/NoANRAndCrashDialogs.git
+cd NoANRAndCrashDialogs
+./gradlew assembleRelease
+```
+
+APK is at `app/build/outputs/apk/release/app-release.apk`.
+
+## Install
+
+1. Install the APK
+2. Open the Vector manager app
+3. Enable the module and set scope to **system**
+4. Reboot
+
+## Credits
+
+- **[diskree](https://github.com/diskree/NoANRAndCrashDialogs)** — original creator of this module (CC0 1.0 license)
+- **[JingMatrix](https://github.com/JingMatrix/Vector)** — Vector 2.0 framework
+- **[libxposed](https://github.com/libxposed/api)** — modern Xposed API
+
+*This codebase was updated with assistance from **DeepSeek V4 Flash**.*
+
+## License
+
+[CC0 1.0 Universal](https://creativecommons.org/publicdomain/zero/1.0/legalcode) — see [LICENSE](LICENSE).  
+Same as the original project.

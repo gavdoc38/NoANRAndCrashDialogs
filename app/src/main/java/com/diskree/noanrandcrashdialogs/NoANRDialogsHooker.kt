@@ -3,93 +3,107 @@ package com.diskree.noanrandcrashdialogs
 import android.annotation.SuppressLint
 import android.content.Context
 import android.os.Handler
+import android.util.Log
 import io.github.libxposed.api.XposedInterface
-import io.github.libxposed.api.XposedModule
 import io.github.libxposed.api.XposedModuleInterface
-import io.github.libxposed.api.annotations.BeforeInvocation
-import io.github.libxposed.api.annotations.XposedHooker
+import io.github.libxposed.api.XposedInterface.Chain
+import io.github.libxposed.api.XposedInterface.Hooker
 
 @SuppressLint("PrivateApi")
 object NoANRDialogsHooker {
 
+    private const val TAG = "NoANRAndCrashDialogs"
     private const val DIALOG_DATA_CLASS_NAME = "com.android.server.am.AppNotRespondingDialog\$Data"
     private const val WAIT_COMMAND_CODE = 2
 
-    private var xposedModule: XposedModule? = null
+    fun hook(param: XposedModuleInterface.SystemServerStartingParam, module: XposedInterface) {
+        val cl = param.classLoader
 
-    fun hook(param: XposedModuleInterface.SystemServerLoadedParam, xposedModule: XposedModule) {
-        this.xposedModule = xposedModule
-        param.classLoader.apply {
-            val controllerClass = loadClass("com.android.server.am.ErrorDialogController")
-            val showANRDialogsMethod = controllerClass.getDeclaredMethod(
+        if (hookV31Plus(cl, module)) return
+        if (hookV27to30(cl, module)) return
+
+        module.log(Log.WARN, TAG, "No ANR hook method found for this Android version")
+    }
+
+    private fun hookV31Plus(cl: ClassLoader, module: XposedInterface): Boolean {
+        return try {
+            val controllerClass = cl.loadClass("com.android.server.am.ErrorDialogController")
+            val showMethod = controllerClass.getDeclaredMethod(
                 "showAnrDialogs",
-                loadClass(DIALOG_DATA_CLASS_NAME)
+                cl.loadClass(DIALOG_DATA_CLASS_NAME)
             ).accessed()
-            xposedModule.hook(showANRDialogsMethod, ANRDialogShowingHooker::class.java)
+            module.hook(showMethod).intercept(ANRDialogShowingHooker())
+            true
+        } catch (_: Throwable) {
+            false
         }
     }
 
-    @XposedHooker
-    private class ANRDialogShowingHooker : XposedInterface.Hooker {
+    private fun hookV27to30(cl: ClassLoader, module: XposedInterface): Boolean {
+        return try {
+            val appErrorsClass = cl.loadClass("com.android.server.am.AppErrors")
+            val processRecordClass = cl.loadClass("com.android.server.am.ProcessRecord")
 
-        companion object {
-            @Suppress("unused")
-            @JvmStatic
-            @BeforeInvocation
-            fun beforeShowAnrDialogs(
-                callback: XposedInterface.BeforeHookCallback
-            ): ANRDialogShowingHooker {
-                try {
-                    val controller = callback.thisObject
-                    if (controller == null) {
-                        callback.returnAndSkip(null)
-                        return ANRDialogShowingHooker()
-                    }
+            try {
+                val method = appErrorsClass.getDeclaredMethod(
+                    "appNotResponding",
+                    String::class.java, Int::class.javaPrimitiveType!!, processRecordClass
+                ).accessed()
+                module.hook(method).intercept(LegacyANRHooker())
+                return true
+            } catch (_: NoSuchMethodException) { }
 
-                    val isSilentANR: Boolean? = controller
-                        .getField<Any>("mApp")
-                        ?.getField<Any>("mErrorState")
-                        ?.invokeMethod("isSilentAnr")
-                    if (isSilentANR == null) {
-                        callback.returnAndSkip(null)
-                        return ANRDialogShowingHooker()
-                    }
+            try {
+                val method = appErrorsClass.getDeclaredMethod(
+                    "appNotResponding",
+                    String::class.java, Int::class.javaPrimitiveType!!, processRecordClass,
+                    String::class.java
+                ).accessed()
+                module.hook(method).intercept(LegacyANRHooker())
+                return true
+            } catch (_: NoSuchMethodException) { }
 
-                    val contexts: List<Context>? = controller.invokeMethod(
-                        "getDisplayContexts",
-                        arrayOf(Boolean::class.java),
-                        isSilentANR
-                    )
-                    if (contexts.isNullOrEmpty()) {
-                        callback.returnAndSkip(null)
-                        return ANRDialogShowingHooker()
-                    }
+            false
+        } catch (_: Throwable) {
+            false
+        }
+    }
 
-                    val service: Any? = controller.getField("mService")
-                    if (service == null) {
-                        callback.returnAndSkip(null)
-                        return ANRDialogShowingHooker()
-                    }
+    private class ANRDialogShowingHooker : Hooker {
 
-                    val data = callback.args[0]
-                    val classLoader = data.javaClass.classLoader
-                    if (classLoader == null) {
-                        callback.returnAndSkip(null)
-                        return ANRDialogShowingHooker()
-                    }
+        override fun intercept(chain: Chain): Any? {
+            try {
+                val controller = chain.thisObject
+                if (controller == null) return null
 
-                    val dialogClass =
-                        classLoader.loadClass("com.android.server.am.AppNotRespondingDialog")
-                    if (dialogClass == null) {
-                        callback.returnAndSkip(null)
-                        return ANRDialogShowingHooker()
-                    }
+                val isSilentANR: Boolean? = controller
+                    .getField<Any>("mApp")
+                    ?.getField<Any>("mErrorState")
+                    ?.invokeMethod("isSilentAnr")
+                if (isSilentANR == null) return null
 
-                    val activityManagerServiceClass = classLoader
-                        .loadClass("com.android.server.am.ActivityManagerService")
-                    val dialogDataClass = classLoader.loadClass(DIALOG_DATA_CLASS_NAME)
-                    for (context in contexts) {
-                        val dialog: Any? = dialogClass.newInstance(
+                val contexts: List<Context>? = controller.invokeMethod(
+                    "getDisplayContexts",
+                    arrayOf(Boolean::class.javaPrimitiveType!!),
+                    isSilentANR
+                )
+                if (contexts.isNullOrEmpty()) return null
+
+                val service: Any? = controller.getField("mService")
+                if (service == null) return null
+
+                val data = chain.getArg(0)
+                val classLoader = data.javaClass.classLoader
+                if (classLoader == null) return null
+
+                val dialogClass =
+                    classLoader.loadClass("com.android.server.am.AppNotRespondingDialog")
+                val activityManagerServiceClass = classLoader
+                    .loadClass("com.android.server.am.ActivityManagerService")
+                val dialogDataClass = classLoader.loadClass(DIALOG_DATA_CLASS_NAME)
+                for (context in contexts) {
+                    try {
+                        val dialog = dialogClass.newInstance(
                             arrayOf(
                                 activityManagerServiceClass,
                                 Context::class.java,
@@ -98,26 +112,25 @@ object NoANRDialogsHooker {
                             service,
                             context,
                             data
-                        )
-                        if (dialog == null) {
-                            callback.returnAndSkip(null)
-                            return ANRDialogShowingHooker()
-                        }
+                        ) ?: continue
 
-                        val handler: Handler? = dialog.getField("mHandler")
-                        if (handler == null) {
-                            callback.returnAndSkip(null)
-                            return ANRDialogShowingHooker()
-                        }
-                        xposedModule?.log("[NoANRAndCrashDialogs] Hide ANR dialog")
+                        val handler = dialog!!.getField<Handler>("mHandler") ?: continue
                         handler.obtainMessage(WAIT_COMMAND_CODE).sendToTarget()
+                    } catch (_: Throwable) {
+                        continue
                     }
-                    callback.returnAndSkip(null)
-                } catch (e: Throwable) {
-                    callback.returnAndSkip(null)
                 }
-                return ANRDialogShowingHooker()
+                return null
+            } catch (_: Throwable) {
+                return null
             }
+        }
+    }
+
+    private class LegacyANRHooker : Hooker {
+
+        override fun intercept(chain: Chain): Any? {
+            return null
         }
     }
 }
