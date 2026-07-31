@@ -14,7 +14,7 @@ object NoANRDialogsHooker {
 
     private const val TAG = "NoANRAndCrashDialogs"
     private const val DIALOG_DATA_CLASS_NAME = "com.android.server.am.AppNotRespondingDialog\$Data"
-    private const val WAIT_COMMAND_CODE = 2
+    private const val FORCE_CLOSE_COMMAND_CODE = 1
 
     fun hook(param: XposedModuleInterface.SystemServerStartingParam, module: XposedInterface) {
         val cl = param.classLoader
@@ -115,7 +115,7 @@ object NoANRDialogsHooker {
                         ) ?: continue
 
                         val handler = dialog!!.getField<Handler>("mHandler") ?: continue
-                        handler.obtainMessage(WAIT_COMMAND_CODE).sendToTarget()
+                        handler.obtainMessage(FORCE_CLOSE_COMMAND_CODE).sendToTarget()
                     } catch (_: Throwable) {
                         continue
                     }
