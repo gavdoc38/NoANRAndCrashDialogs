@@ -32,3 +32,10 @@ jobs:
 
     - name: Build with Gradle
       run: ./gradlew --warning-mode all assembleRelease
+
+    - name: Upload CI module zip as artifact zip
+      uses: actions/upload-artifact@v7
+      with:
+        name: NoANRAndCrashDialogs-CI_#${{ github.run_number }}
+        path: 'app/*'
+        compression-level: 9
